@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MH2000 Experiment Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+html{color-scheme:light}body{margin:0;font-size:14px}img{max-width:100%}
+
+/* Layout: lab-bench console. Apparatus canvas on the left, instrument panel (controls, readouts, live chart) on the right; tabs per experiment. */
+:root{
+  --bg:#eef2f5; --surface:#ffffff; --ink:#12202c; --muted:#56687a; --line:#d3dce4;
+  --accent:#0a6d8c; --accent-ink:#ffffff; --glass:#7fa9bd; --warn:#c2410c; --good:#15803d; --chip:#e3edf2;
+  --f-display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1318; --surface:#131d25; --ink:#e4ecf2; --muted:#8ea0b0; --line:#25333f;
+  --accent:#4cb8d6; --accent-ink:#06202a; --glass:#6f9bb0; --warn:#fb923c; --good:#4ade80; --chip:#1b2a35; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1318; --surface:#131d25; --ink:#e4ecf2; --muted:#8ea0b0; --line:#25333f;
+  --accent:#4cb8d6; --accent-ink:#06202a; --glass:#6f9bb0; --warn:#fb923c; --good:#4ade80; --chip:#1b2a35; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1320px;margin:0 auto;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:8px 24px}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(26px,3.4vw,38px)/1.05 var(--f-display);margin:6px 0 0;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:56ch}
+nav{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px}
+nav button{font:500 14px/1 var(--f-body);color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:9px 14px;cursor:pointer}
+nav button .n{font-family:var(--f-mono);color:var(--muted);margin-right:6px;font-size:12px}
+nav button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+nav button[aria-selected="true"] .n{color:inherit;opacity:.75}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sim{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:18px;align-items:start}
+.sim:fullscreen{background:var(--bg);padding:24px;overflow:auto}
+@media (max-width:900px){.sim{grid-template-columns:minmax(0,1fr)}}
+.stagebox{display:grid;gap:12px;min-width:0}
+.stagehead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px}
+h2{font:700 22px/1.15 var(--f-display);margin:0;text-wrap:balance}
+.ref{font:400 12px/1.3 var(--f-mono);color:var(--muted)}
+canvas.stage{width:100%;aspect-ratio:16/10;max-width:100%;display:block;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.notes div{min-width:0}
+.notes h3{font:500 12px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
+.notes p,.notes ul{margin:0;max-width:65ch}
+.notes ul{padding-left:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px;min-width:0}
+.ctl{display:grid;gap:4px}
+.ctl label{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.ctl label output{font:500 13px var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{font:600 13px/1 var(--f-body);border-radius:7px;padding:9px 12px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg label{font-size:13px;padding:7px 11px;cursor:pointer;color:var(--ink)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--chip);font-weight:600}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+dl.read{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0;padding:12px;background:var(--chip);border-radius:8px}
+dl.read dt{font-size:13px;color:var(--muted)}
+dl.read dd{margin:0;text-align:right;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums}
+.status{font-size:13px;padding:8px 10px;border-radius:7px;border:1px solid var(--line);min-height:2.4em}
+.status.warn{border-color:var(--warn);color:var(--warn)}
+.status.good{border-color:var(--good);color:var(--good)}
+canvas.plot{width:100%;aspect-ratio:4/3;max-width:100%;display:block}
+.prog{height:6px;background:var(--chip);border-radius:3px;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--accent)}
+footer{color:var(--muted);font-size:12px;max-width:90ch}
+sub,sup{line-height:0}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+<header>
+  <div>
+    <div class="eyebrow">MH2000 Experimental Methods · Lecture 1</div>
+    <h1>Thermodynamic measurements, on the bench</h1>
+  </div>
+  <p>Five apparatus from the lecture, driven by the same thermodynamic data as the slides. Change the settings, wait for equilibrium, and record your own data.</p>
+</header>
+
+<nav role="tablist" aria-label="Experiments">
+  <button role="tab" data-t="isopiestic"><span class="n">01</span>Pseudoisopiestic</button>
+  <button role="tab" data-t="transpiration"><span class="n">02</span>Transpiration</button>
+  <button role="tab" data-t="boudouard"><span class="n">03</span>C–CO–CO₂</button>
+  <button role="tab" data-t="hydrogen"><span class="n">04</span>H₂–H₂O</button>
+  <button role="tab" data-t="emulsion"><span class="n">05</span>Slag–metal</button>
+</nav>
+
+<!-- 1 ISOPIESTIC -->
+<section class="sim" id="isopiestic" hidden>
+  <div class="stagebox">
+    <div class="stagehead"><h2>Sealed tube in a two-zone furnace: Au–Cd</h2><span class="ref">after Bartha &amp; Alexander, Can. J. Chem. 1965</span></div>
+    <canvas class="stage" id="iso-stage" aria-label="Animated sealed quartz tube with a cadmium reservoir in the cold zone and a gold sample in the hot zone"></canvas>
+    <div class="notes">
+      <div><h3>What happens</h3><p>Liquid Cd in the cold zone fixes the Cd pressure in the tube at p°<sub>Cd</sub>(T₁). The gold absorbs Cd until its own Cd pressure, a<sub>Cd</sub>·p°<sub>Cd</sub>(T₂), is the same. Weigh the sample to get x<sub>Cd</sub>.</p></div>
+      <div><h3>Try this</h3><ul><li>Record a point at equilibrium, then change T₁ and record again to build the a<sub>Cd</sub>–x curve.</li><li>Record before equilibrium and see how far off the point lands.</li></ul></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ctl"><label for="iso-tr">Reservoir T₁ (pure Cd) <output id="iso-tr-v"></output></label><input type="range" id="iso-tr" min="600" max="800" step="5" value="660"></div>
+    <div class="ctl"><label for="iso-ta">Sample T₂ (Au) <output id="iso-ta-v"></output></label><input type="range" id="iso-ta" min="720" max="1100" step="5" value="900"></div>
+    <div class="ctl"><label for="iso-sp">Simulation speed <output id="iso-sp-v"></output></label><input type="range" id="iso-sp" min="1" max="40" step="1" value="10"></div>
+    <dl class="read">
+      <dt>Elapsed</dt><dd id="iso-t"></dd>
+      <dt>p°<sub>Cd</sub>(T₁) in tube</dt><dd id="iso-p1"></dd>
+      <dt>p°<sub>Cd</sub>(T₂)</dt><dd id="iso-p2"></dd>
+      <dt>a<sub>Cd</sub> = p°(T₁)/p°(T₂)</dt><dd id="iso-a"></dd>
+      <dt>Mass gain, 1.000 g Au</dt><dd id="iso-m"></dd>
+      <dt>x<sub>Cd</sub> in sample</dt><dd id="iso-x"></dd>
+    </dl>
+    <div class="status" id="iso-st"></div>
+    <div class="row"><button class="btn" id="iso-rec">Weigh and record point</button><button class="btn ghost" id="iso-new">New Au sample</button><button class="btn ghost" id="iso-clr">Clear data</button></div>
+    <canvas class="plot" id="iso-plot" aria-label="Recorded Cd activity against Cd mole fraction"></canvas>
+  </div>
+</section>
+
+<!-- 2 TRANSPIRATION -->
+<section class="sim" id="transpiration" hidden>
+  <div class="stagebox">
+    <div class="stagehead"><h2>Transpiration: vapour pressure of liquid Cu</h2><span class="ref">cf. Morris &amp; Zellars, 1956 · 1450–1600 °C</span></div>
+    <canvas class="stage" id="tr-stage" aria-label="Animated carrier gas flowing over molten copper and carrying vapour to a condenser"></canvas>
+    <div class="notes">
+      <div><h3>What happens</h3><p>Carrier gas picks up Cu vapour over the melt; the vapour condenses downstream. From the condensed mass and the gas volume, p<sub>Cu</sub> = n<sub>Cu</sub>/(n<sub>Cu</sub>+n<sub>carrier</sub>)·P.</p></div>
+      <div><h3>Try this</h3><ul><li>Run at 5, 20, 80, 300 mL/min. Find the plateau.</li><li>At low flow, back-diffusion inflates the result; at high flow the gas leaves unsaturated. Compare Ar with He.</li></ul></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ctl"><label for="tr-T">Furnace temperature <output id="tr-T-v"></output></label><input type="range" id="tr-T" min="1723" max="1873" step="5" value="1823"></div>
+    <div class="ctl"><label for="tr-F">Carrier flow (STP) <output id="tr-F-v"></output></label><input type="range" id="tr-F" min="0" max="100" step="1" value="50"></div>
+    <div class="row"><span class="ctl" style="font-size:13px;color:var(--muted)">Carrier</span>
+      <span class="seg"><label><input type="radio" name="tr-gas" value="Ar" checked>Ar</label><label><input type="radio" name="tr-gas" value="He">He</label></span></div>
+    <dl class="read">
+      <dt>Residence time in hot zone</dt><dd id="tr-res"></dd>
+      <dt>Last run: Cu condensed</dt><dd id="tr-m"></dd>
+      <dt>Last run: carrier gas</dt><dd id="tr-n"></dd>
+      <dt>Last run: apparent p<sub>Cu</sub></dt><dd id="tr-p"></dd>
+    </dl>
+    <div class="prog" aria-hidden="true"><i id="tr-prog"></i></div>
+    <div class="row"><button class="btn" id="tr-run">Run 60 min and weigh condensate</button><button class="btn ghost" id="tr-clr">Clear data</button></div>
+    <label class="chk"><input type="checkbox" id="tr-rev">Show the true p°<sub>Cu</sub></label>
+    <canvas class="plot" id="tr-plot" aria-label="Apparent vapour pressure against carrier gas flow rate"></canvas>
+  </div>
+</section>
+
+<!-- 3 BOUDOUARD -->
+<section class="sim" id="boudouard" hidden>
+  <div class="stagebox">
+    <div class="stagehead"><h2>CO–CO₂ gas over graphite: controlled p<sub>O₂</sub></h2><span class="ref">ΔG°₄ = 170 700 − 174.5T J · ΔG°₃ = −564 800 + 173.62T J</span></div>
+    <canvas class="stage" id="bd-stage" aria-label="Animated CO and CO2 molecules flowing through a graphite bed"></canvas>
+    <div class="notes">
+      <div><h3>What happens</h3><p>With graphite present, C + CO₂ = 2CO sets the outlet gas whatever you feed in. Without graphite, the inlet CO/CO₂ ratio fixes p<sub>O₂</sub> through 2CO + O₂ = 2CO₂.</p></div>
+      <div><h3>Try this</h3><ul><li>Heat from 900 K to 1873 K with graphite in. Watch p<sub>CO₂</sub> collapse to ~10⁻⁵ atm.</li><li>Remove graphite at 900 K and pick a CO-rich inlet: carbon deposition becomes favourable.</li></ul></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ctl"><label for="bd-T">Temperature <output id="bd-T-v"></output></label><input type="range" id="bd-T" min="700" max="1900" step="5" value="1100"></div>
+    <div class="ctl"><label for="bd-in">Inlet gas, % CO₂ (rest CO) <output id="bd-in-v"></output></label><input type="range" id="bd-in" min="0" max="100" step="1" value="50"></div>
+    <label class="chk"><input type="checkbox" id="bd-gr" checked>Graphite crucible / bed in the hot zone</label>
+    <dl class="read">
+      <dt>Outlet % CO</dt><dd id="bd-co"></dd>
+      <dt>p<sub>CO₂</sub> (outlet)</dt><dd id="bd-pco2"></dd>
+      <dt>K₄ = p²<sub>CO</sub>/p<sub>CO₂</sub></dt><dd id="bd-k"></dd>
+      <dt>p<sub>O₂</sub> from Rxn 3</dt><dd id="bd-po2"></dd>
+    </dl>
+    <div class="status" id="bd-st"></div>
+    <canvas class="plot" id="bd-plot" aria-label="Equilibrium percent CO against temperature at one atmosphere"></canvas>
+  </div>
+</section>
+
+<!-- 4 HYDROGEN -->
+<section class="sim" id="hydrogen" hidden>
+  <div class="stagebox">
+    <div class="stagehead"><h2>H₂ through a water bubbler: oxidise or reduce?</h2><span class="ref">H₂ + ½O₂ = H₂O(g), ΔG° = −246 450 + 54.8T J</span></div>
+    <canvas class="stage" id="h-stage" aria-label="Animated hydrogen bubbler feeding a furnace containing a metal sample"></canvas>
+    <div class="notes">
+      <div><h3>What happens</h3><p>The bubbler temperature is the gas dew point and sets p<sub>H₂O</sub>. The H₂O/H₂ ratio then fixes p<sub>O₂</sub> in the furnace. The sample oxidises if that ratio is above the metal/oxide equilibrium line.</p></div>
+      <div><h3>Try this</h3><ul><li>Fe at 1273 K: find the dew point where FeO starts to form.</li><li>Switch to Cr: even very dry H₂ oxidises it. Ni never oxidises in this gas.</li></ul></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ctl"><label for="h-td">Bubbler / dew point <output id="h-td-v"></output></label><input type="range" id="h-td" min="-60" max="80" step="1" value="40"></div>
+    <div class="ctl"><label for="h-T">Furnace temperature <output id="h-T-v"></output></label><input type="range" id="h-T" min="873" max="1673" step="5" value="1273"></div>
+    <div class="row"><span style="font-size:13px;color:var(--muted)">Sample</span>
+      <span class="seg"><label><input type="radio" name="h-m" value="Fe" checked>Fe</label><label><input type="radio" name="h-m" value="Ni">Ni</label><label><input type="radio" name="h-m" value="Cr">Cr</label></span></div>
+    <dl class="read">
+      <dt>p<sub>H₂O</sub> (saturated)</dt><dd id="h-pw"></dd>
+      <dt>p<sub>H₂O</sub>/p<sub>H₂</sub></dt><dd id="h-r"></dd>
+      <dt>p<sub>O₂</sub> in furnace</dt><dd id="h-po2"></dd>
+      <dt>Metal/oxide equilibrium ratio</dt><dd id="h-rc"></dd>
+    </dl>
+    <div class="status" id="h-st"></div>
+    <canvas class="plot" id="h-plot" aria-label="Equilibrium H2O to H2 ratio for metal oxides against temperature"></canvas>
+  </div>
+</section>
+
+<!-- 5 EMULSION -->
+<section class="sim" id="emulsion" hidden>
+  <div class="stagebox">
+    <div class="stagehead"><h2>Impeller mixing: induced emulsification</h2><span class="ref">after White &amp; Sichen, MMTB 45B (2014) · 1823 K</span></div>
+    <canvas class="stage" id="em-stage" aria-label="Animated graphite crucible with an impeller stirring slag over liquid silicon"></canvas>
+    <div class="notes">
+      <div><h3>What happens</h3><p>While Ca transfers fast, the apparent interfacial tension is low and the impeller tears metal into droplets: the interfacial area jumps. As ΔG → 0 the tension recovers and the droplets recoalesce, even though mixing continues.</p></div>
+      <div><h3>Try this</h3><ul><li>Run at 100 rpm and watch area peak, then fall.</li><li>Repeat at 0 and 50 rpm: equilibrium takes far longer without the emulsion.</li></ul></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ctl"><label for="em-rpm">Impeller speed <output id="em-rpm-v"></output></label><input type="range" id="em-rpm" min="0" max="200" step="5" value="100"></div>
+    <div class="ctl"><label for="em-sp">Simulation speed <output id="em-sp-v"></output></label><input type="range" id="em-sp" min="0.5" max="6" step="0.5" value="2"></div>
+    <dl class="read">
+      <dt>Mixing time</dt><dd id="em-t"></dd>
+      <dt>Driving force ΔG/ΔG₀</dt><dd id="em-g"></dd>
+      <dt>Apparent σ/σ₀</dt><dd id="em-s"></dd>
+      <dt>Interfacial area A/A₀</dt><dd id="em-a"></dd>
+      <dt>[Ca] in Si / [Ca]<sub>eq</sub></dt><dd id="em-c"></dd>
+    </dl>
+    <div class="row"><button class="btn" id="em-go">Start mixing</button><button class="btn ghost" id="em-rs">Reset melt</button></div>
+    <canvas class="plot" id="em-plot" aria-label="Calcium in silicon and interfacial area against mixing time"></canvas>
+  </div>
+</section>
+
+<footer>Thermodynamic data: Cd and Cu vapour pressures from Clausius–Clapeyron fits to the melting-point and boiling-point values; carbon and oxide reactions as on the slides and standard compilations. The Au–Cd activity uses a regular-solution model (Ω = −40 kJ/mol) and the emulsification kinetics are a simplified model of the published trends, so read these two quantitatively only in shape, not in absolute value.</footer>
+</div>
+
+<script>
+(()=>{
+const R=8.314, $=s=>document.querySelector(s);
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let C={};
+function readTheme(){const cs=getComputedStyle(document.documentElement);
+  ['bg','surface','ink','muted','line','accent','glass','warn','good','chip'].forEach(k=>C[k]=cs.getPropertyValue('--'+k).trim());}
+readTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readTheme);
+new MutationObserver(readTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+const dark=()=>{const c=C.bg.replace('#','');return parseInt(c.slice(0,2),16)<90};
+
+function fit(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1;const w=Math.max(1,Math.round(r.width*d)),h=Math.max(1,Math.round(r.height*d));
+  if(c.width!==w||c.height!==h){c.width=w;c.height=h}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,r.height);return {x,W:r.width,H:r.height};}
+const SUP={'-':'⁻','0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
+function sci(v,d=2){if(!isFinite(v)||v<=0)return '—';const e=Math.floor(Math.log10(v));if(e>=-2&&e<=3)return v.toPrecision(d+1).replace(/\.?0+$/,m=>m.includes('.')?'':m);
+  let m=v/10**e;return m.toFixed(d-1)+'×10'+String(e).split('').map(c=>SUP[c]).join('');}
+const gauss=()=>Math.sqrt(-2*Math.log(Math.random()+1e-12))*Math.cos(2*Math.PI*Math.random());
+const lerp=(a,b,t)=>a+(b-a)*t, clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function glow(T,al=1){const s=[[600,[40,10,6]],[800,[95,18,6]],[1000,[170,40,10]],[1200,[230,80,20]],[1450,[255,135,45]],[1700,[255,185,95]],[1950,[255,222,160]]];
+  T=clamp(T,600,1950);let i=0;while(i<s.length-2&&T>s[i+1][0])i++;const t=(T-s[i][0])/(s[i+1][0]-s[i][0]);
+  const c=s[i][1].map((v,k)=>Math.round(lerp(v,s[i+1][1][k],t)));return `rgba(${c[0]},${c[1]},${c[2]},${al})`;}
+function rr(x,X,Y,w,h,r){x.beginPath();x.roundRect?x.roundRect(X,Y,w,h,r):x.rect(X,Y,w,h);}
+function label(x,t,X,Y,o={}){x.font=`${o.w||500} ${o.s||12}px ${o.f||'"IBM Plex Sans",system-ui,sans-serif'}`;x.fillStyle=o.c||C.ink;x.textAlign=o.a||'left';x.textBaseline=o.b||'alphabetic';x.fillText(t,X,Y);}
+const MONO='"IBM Plex Mono",ui-monospace,monospace';
+
+/* generic axes */
+function axes(x,W,H,o){const L=62,Rt=12,T=14,B=40;const b={l:L,t:T,w:W-L-Rt,h:H-T-B};
+  const tx=v=>o.xlog?Math.log10(v):v, ty=v=>o.ylog?Math.log10(v):v;
+  const X=v=>b.l+(tx(v)-tx(o.x0))/(tx(o.x1)-tx(o.x0))*b.w;
+  const Y=v=>b.t+b.h-(ty(v)-ty(o.y0))/(ty(o.y1)-ty(o.y0))*b.h;
+  x.lineWidth=1;x.font=`11px ${MONO}`;
+  o.xt.forEach(v=>{const px=X(v);x.strokeStyle=C.line;x.beginPath();x.moveTo(px,b.t);x.lineTo(px,b.t+b.h);x.stroke();
+    label(x,o.fx?o.fx(v):v,px,b.t+b.h+15,{a:'center',c:C.muted,f:MONO,s:11,w:400});});
+  o.yt.forEach(v=>{const py=Y(v);x.strokeStyle=C.line;x.beginPath();x.moveTo(b.l,py);x.lineTo(b.l+b.w,py);x.stroke();
+    label(x,o.fy?o.fy(v):v,b.l-6,py,{a:'right',b:'middle',c:C.muted,f:MONO,s:11,w:400});});
+  x.strokeStyle=C.muted;x.beginPath();x.moveTo(b.l,b.t);x.lineTo(b.l,b.t+b.h);x.lineTo(b.l+b.w,b.t+b.h);x.stroke();
+  label(x,o.xl,b.l+b.w/2,H-6,{a:'center',c:C.muted,s:12});
+  x.save();x.translate(12,b.t+b.h/2);x.rotate(-Math.PI/2);label(x,o.yl,0,0,{a:'center',b:'middle',c:C.muted,s:12});x.restore();
+  return {X,Y,b};}
+function clipBox(x,b){x.save();x.beginPath();x.rect(b.l,b.t,b.w,b.h);x.clip();}
+
+function slider(id,fmt){const el=$('#'+id),out=$('#'+id+'-v');const f=()=>out.textContent=fmt(+el.value);el.addEventListener('input',f);f();return el;}
+const radio=n=>document.querySelector(`input[name="${n}"]:checked`).value;
+const K2C=T=>`${T} K · ${Math.round(T-273)} °C`;
+
+/* draw a molecule glyph */
+function atom(x,X,Y,r,c){x.beginPath();x.arc(X,Y,r,0,7);x.fillStyle=c;x.fill();}
+const COL={C:'#3d4249',O:'#d64535',H:'#e9eef2',Hd:'#c9d2da',Cd:'#9aa7b3',Cu:'#d4793a'};
+
+/* ============ 1. PSEUDOISOPIESTIC ============ */
+const iso=(()=>{
+  const st=$('#iso-stage'),pl=$('#iso-plot');
+  const Tr=slider('iso-tr',v=>K2C(v)),Ta=slider('iso-ta',v=>K2C(v)),sp=slider('iso-sp',v=>`${v} h per s`);
+  const p0=T=>Math.exp(11.76-12230/T); // liquid Cd, atm
+  const OM=-40000, act=(X,T)=>X*Math.exp(OM*(1-X)**2/(R*T));
+  const Xeq=(a,T)=>{if(a>=1)return .999;let lo=0,hi=.999;for(let i=0;i<50;i++){const m=(lo+hi)/2;act(m,T)<a?lo=m:hi=m}return (lo+hi)/2};
+  let X=0,t=0,pts=[],parts=[],acc1=0,acc2=0,flash=0;
+  const tau=16;
+  [Tr,Ta].forEach(el=>el.addEventListener('input',()=>{if(+Ta.value<+Tr.value+40){if(el===Tr)Ta.value=+Tr.value+40;else Tr.value=+Ta.value-40;Ta.dispatchEvent(new Event('input'));Tr.dispatchEvent(new Event('input'));}}));
+  $('#iso-new').onclick=()=>{X=0;t=0;parts=[]};
+  $('#iso-clr').onclick=()=>{pts=[]};
+  $('#iso-rec').onclick=()=>{const a=p0(+Tr.value)/p0(+Ta.value);pts.push({X,a,ok:Math.abs(X-Xeq(a,+Ta.value))<.004});flash=1;};
+  function frame(dt){
+    const T1=+Tr.value,T2=+Ta.value,P1=p0(T1),P2=p0(T2),a=P1/P2,xe=Xeq(a,T2);
+    const hrs=dt*+sp.value;t+=hrs;X+=(xe-X)*(1-Math.exp(-hrs/tau));
+    const pA=act(Math.max(X,1e-6),T2)*P2;
+    const {x,W,H}=fit(st);
+    // temperature profile
+    const prof=u=>{const s=1/(1+Math.exp(-(u-.5)*28));return lerp(T1,T2,s)};
+    const ty=T=>lerp(H*.30,H*.08,(T-550)/(1150-550));
+    x.strokeStyle=C.line;x.lineWidth=1;
+    [600,800,1000].forEach(T=>{x.beginPath();x.moveTo(W*.075,ty(T));x.lineTo(W*.95,ty(T));x.stroke();label(x,T+' K',W*.015,ty(T)+4,{a:'left',c:C.muted,f:MONO,s:10,w:400})});
+    x.lineWidth=2.5;x.beginPath();for(let i=0;i<=100;i++){const u=.05+.9*i/100,T=prof(u);i?x.lineTo(W*u,ty(T)):x.moveTo(W*u,ty(T))}
+    const gr=x.createLinearGradient(W*.05,0,W*.95,0);gr.addColorStop(0,glow(T1));gr.addColorStop(1,glow(T2));x.strokeStyle=gr;x.stroke();
+    label(x,'Furnace temperature profile',W*.05,H*.05,{c:C.muted,s:11});
+    // furnace zones
+    const zones=[[.05,.45,T1,'Zone 1 (cold)'],[.55,.95,T2,'Zone 2 (hot)']];
+    zones.forEach(([a0,a1,T,n])=>{
+      rr(x,W*a0,H*.38,W*(a1-a0),H*.46,8);x.fillStyle=dark()?'#1a242c':'#e6ebef';x.fill();x.strokeStyle=C.line;x.lineWidth=1;x.stroke();
+      const g=x.createRadialGradient(W*(a0+a1)/2,H*.6,5,W*(a0+a1)/2,H*.6,W*.25);g.addColorStop(0,glow(T,.55));g.addColorStop(1,glow(T,0));x.fillStyle=g;x.fillRect(W*a0,H*.38,W*(a1-a0),H*.46);
+      for(let i=0;i<9;i++){const cx=W*(a0+.02+(a1-a0-.04)*i/8);[H*.42,H*.78].forEach(cy=>{rr(x,cx-5,cy-4,10,8,3);x.fillStyle=glow(T+150);x.fill()})}
+      label(x,n,W*(a0+a1)/2,H*.405,{a:'center',c:C.muted,s:11});});
+    // tube
+    const ty0=H*.53,th=H*.14;
+    rr(x,W*.03,ty0,W*.94,th,th/2);x.fillStyle=dark()?'rgba(140,190,215,.10)':'rgba(130,180,205,.14)';x.fill();x.strokeStyle=C.glass;x.lineWidth=2;x.stroke();
+    label(x,'sealed quartz tube, evacuated',W*.5,ty0-6,{a:'center',c:C.muted,s:11});
+    // reservoir
+    const cup=(cx,fill,lev)=>{const w=W*.075,h=H*.075,y=ty0+th-h-3;x.beginPath();x.moveTo(cx-w/2,y);x.lineTo(cx-w/2+4,y+h);x.lineTo(cx+w/2-4,y+h);x.lineTo(cx+w/2,y);x.strokeStyle=C.muted;x.lineWidth=2;x.stroke();
+      x.beginPath();x.moveTo(cx-w/2+2,y+h*(1-lev));x.lineTo(cx-w/2+4.5,y+h-1.5);x.lineTo(cx+w/2-4.5,y+h-1.5);x.lineTo(cx+w/2-2,y+h*(1-lev));x.closePath();x.fillStyle=fill;x.fill();return y;};
+    const ry=cup(W*.22,'#a9b3bd',.55);
+    const au=[212,168,58],cd=[170,178,186],mix=au.map((v,i)=>Math.round(lerp(v,cd[i],clamp(X/.6,0,1))));
+    const ay=cup(W*.78,`rgb(${mix})`,.45+X*.25);
+    // particles
+    if(!RM){
+      acc1+=dt*30;acc2+=dt*30*Math.min(4,pA/P1);
+      while(acc1>1){acc1--;parts.push({x:.22,y:.5+.3*(Math.random()-.5),d:1})}
+      while(acc2>1){acc2--;parts.push({x:.78,y:.5+.3*(Math.random()-.5),d:-1})}
+      parts.forEach(p=>{p.x+=p.d*dt*(.10+.08*Math.random())+(Math.random()-.5)*.006;p.y=clamp(p.y+(Math.random()-.5)*.05,.12,.88)});
+      parts=parts.filter(p=>p.x>.215&&p.x<.785);
+      parts.forEach(p=>{atom(x,W*p.x,ty0+th*p.y,2.6,p.d>0?C.accent:C.warn)});
+    }
+    // flux bar
+    const f1=1,f2=Math.min(3,pA/P1),bx=W*.30,bw=W*.40,by=H*.92;
+    label(x,'Cd flux →  from reservoir',bx,by-8,{c:C.accent,s:11});label(x,'from sample  ←',bx+bw,by-8,{a:'right',c:C.warn,s:11});
+    rr(x,bx,by,bw*f1/(f1+f2),6,3);x.fillStyle=C.accent;x.fill();rr(x,bx+bw*f1/(f1+f2),by,bw*f2/(f1+f2),6,3);x.fillStyle=C.warn;x.fill();
+    label(x,`Cd(l) reservoir · T₁ = ${T1} K`,W*.22,H*.745,{a:'center',s:11,c:C.muted});
+    label(x,`Au sample · T₂ = ${T2} K`,W*.78,H*.745,{a:'center',s:11,c:C.muted});
+    // readouts
+    $('#iso-t').textContent=t<48?`${t.toFixed(1)} h`:`${(t/24).toFixed(1)} days`;
+    $('#iso-p1').textContent=sci(P1*101325)+' Pa';$('#iso-p2').textContent=sci(P2*101325)+' Pa';
+    $('#iso-a').textContent=a.toFixed(4);
+    const dm=(1/196.97)*X/(1-X)*112.41*1000;$('#iso-m').textContent=`+${dm.toFixed(1)} mg`;$('#iso-x').textContent=X.toFixed(3);
+    const prog=xe>0?X/xe:1,s=$('#iso-st');
+    if(Math.abs(X-xe)<.004){s.className='status good';s.textContent='Equilibrium: the sample mass is constant. Record the point.'}
+    else{s.className='status';s.textContent=`Absorbing Cd: ${Math.round(clamp(prog,0,1)*100)}% of the way to equilibrium. Mass still ${X<xe?'increasing':'decreasing'}.`}
+    // plot
+    const P=fit(pl),ax=axes(P.x,P.W,P.H,{x0:0,x1:.8,y0:1e-3,y1:1,ylog:true,xt:[0,.2,.4,.6,.8],yt:[1e-3,1e-2,1e-1,1],fy:v=>sci(v,1),xl:'x_Cd in Au–Cd sample',yl:'a_Cd'});
+    clipBox(P.x,ax.b);const g=P.x;
+    g.setLineDash([4,4]);g.strokeStyle=C.muted;g.lineWidth=1.2;g.beginPath();for(let i=0;i<=80;i++){const v=Math.max(1e-3,i/100);i?g.lineTo(ax.X(v),ax.Y(v)):g.moveTo(ax.X(v),ax.Y(v))}g.stroke();
+    g.setLineDash([]);
+    g.strokeStyle=C.accent;g.globalAlpha=.35;g.lineWidth=2;g.beginPath();for(let i=1;i<=80;i++){const xx=i/100,aa=act(xx,T2);i>1?g.lineTo(ax.X(xx),ax.Y(aa)):g.moveTo(ax.X(xx),ax.Y(aa))}g.stroke();g.globalAlpha=1;
+    // current state
+    g.strokeStyle=C.warn;g.setLineDash([2,3]);g.beginPath();g.moveTo(ax.X(0),ax.Y(a));g.lineTo(ax.X(.8),ax.Y(a));g.stroke();g.setLineDash([]);
+    atom(g,ax.X(Math.max(X,0.002)),ax.Y(a),5,C.warn);
+    pts.forEach(p=>{g.beginPath();g.arc(ax.X(p.X),ax.Y(p.a),5,0,7);if(p.ok){g.fillStyle=C.ink;g.fill()}else{g.strokeStyle=C.ink;g.lineWidth=1.5;g.stroke()}});
+    g.restore();
+    label(g,'Raoult',ax.X(.62),ax.Y(.62)-8,{c:C.muted,s:11});
+    label(g,`model at ${T2} K`,ax.b.l+8,ax.b.t+14,{c:C.accent,s:11});
+    label(g,'● at equilibrium  ○ recorded early',ax.b.l+ax.b.w-4,ax.b.t+ax.b.h-8,{a:'right',c:C.muted,s:11});
+  }
+  return {frame};
+})();
+
+/* ============ 2. TRANSPIRATION ============ */
+const tr=(()=>{
+  const st=$('#tr-stage'),pl=$('#tr-plot');
+  const flow=v=>5*10**(2*v/100);
+  const Tf=slider('tr-T',v=>K2C(v)),Fs=slider('tr-F',v=>`${flow(v).toFixed(flow(v)<20?1:0)} mL/min`);
+  const ps=T=>Math.exp(36083*(1/2835-1/T)); // atm
+  const fd=()=>radio('tr-gas')==='He'?4.5:1.5;
+  const papp=(F,T)=>ps(T)*(1/(1+(F/200)**4)+fd()/F);
+  let pts=[],run=null,carr=[],vap=[],acc=0,accv=0,film=0;
+  const clear=()=>{pts=[];film=0};
+  Tf.addEventListener('change',clear);document.querySelectorAll('input[name="tr-gas"]').forEach(r=>r.addEventListener('change',clear));
+  $('#tr-clr').onclick=clear;
+  $('#tr-run').onclick=()=>{if(run)return;run={p:0,F:flow(+Fs.value)};$('#tr-run').disabled=true;film=0};
+  function frame(dt){
+    const T=+Tf.value,F=flow(+Fs.value),Ps=ps(T);
+    const res=20/(F*T/273)*60; // 20 mL hot zone, s
+    $('#tr-res').textContent=res>60?`${(res/60).toFixed(1)} min`:`${res.toFixed(1)} s`;
+    if(run){run.p+=dt/3.5;$('#tr-prog').style.width=Math.min(100,run.p*100)+'%';film=Math.min(1,run.p);
+      if(run.p>=1){const pa=papp(run.F,T)*(1+.015*gauss());const nc=run.F*60/22414;const nv=nc*pa/(1-pa);const m=nv*63.55*1000;
+        pts.push({F:run.F,p:pa*101325});$('#tr-m').textContent=`${m.toFixed(2)} mg`;$('#tr-n').textContent=`${(nc*1000).toFixed(1)} mmol`;
+        $('#tr-p').textContent=`${(pa*101325).toFixed(1)} Pa`;run=null;$('#tr-run').disabled=false;setTimeout(()=>{if(!run)$('#tr-prog').style.width='0'},600)}}
+    const {x,W,H}=fit(st);const cy=H*.52,th=H*.12;
+    const vg=.04+.16*Math.log10(F/5)/2; // normalised gas speed
+    // furnace
+    rr(x,W*.28,H*.28,W*.42,H*.48,8);x.fillStyle=dark()?'#1a242c':'#e6ebef';x.fill();x.strokeStyle=C.line;x.stroke();
+    const g=x.createRadialGradient(W*.49,cy,4,W*.49,cy,W*.24);g.addColorStop(0,glow(T,.6));g.addColorStop(1,glow(T,0));x.fillStyle=g;x.fillRect(W*.28,H*.28,W*.42,H*.48);
+    for(let i=0;i<10;i++){const cx=W*(.30+.38*i/9);[H*.32,H*.72].forEach(yy=>{rr(x,cx-5,yy-4,10,8,3);x.fillStyle=glow(T+120);x.fill()})}
+    label(x,`Hot zone · ${T} K`,W*.49,H*.25,{a:'center',c:C.muted,s:11});
+    // tube with constrictions
+    const yt=cy-th/2,yb=cy+th/2,pinch=th*.30;
+    const prof=u=>{let d=0;[.35,.63].forEach(c=>{d+=pinch*Math.exp(-(((u-c)/.012)**2))});return d};
+    x.beginPath();for(let i=0;i<=200;i++){const u=.10+.82*i/200;const y=yt+prof(u);i?x.lineTo(W*u,y):x.moveTo(W*u,y)}
+    for(let i=200;i>=0;i--){const u=.10+.82*i/200;x.lineTo(W*u,yb-prof(u))}x.closePath();
+    x.fillStyle=dark()?'rgba(140,190,215,.10)':'rgba(130,180,205,.14)';x.fill();x.strokeStyle=C.glass;x.lineWidth=2;x.stroke();
+    // boat + melt
+    rr(x,W*.43,yb-th*.42,W*.12,th*.36,4);x.fillStyle=dark()?'#5b4a3a':'#d8cbb8';x.fill();
+    const mg=x.createLinearGradient(0,yb-th*.40,0,yb-th*.1);mg.addColorStop(0,glow(T+250));mg.addColorStop(1,'#b8562a');rr(x,W*.437,yb-th*.40,W*.106,th*.20,3);x.fillStyle=mg;x.fill();
+    label(x,'Cu(l) in Al₂O₃ boat',W*.49,yb+16,{a:'center',c:C.muted,s:11});
+    // condenser
+    rr(x,W*.76,yt-10,W*.11,th+20,6);x.strokeStyle=C.accent;x.lineWidth=1.5;x.setLineDash([5,4]);x.stroke();x.setLineDash([]);
+    label(x,'water-cooled condenser',W*.815,yt-16,{a:'center',c:C.accent,s:11});
+    if(film>0){x.fillStyle=`rgba(200,110,55,${.25+.6*film})`;x.fillRect(W*.765,yt+1,W*.10,3+3*film);x.fillRect(W*.765,yb-4-3*film,W*.10,3+3*film)}
+    // inlet: cylinder + rotameter
+    rr(x,W*.015,H*.38,W*.035,H*.30,6);x.fillStyle=C.chip;x.fill();x.strokeStyle=C.muted;x.lineWidth=1.5;x.stroke();
+    label(x,radio('tr-gas'),W*.0325,H*.71+12,{a:'center',c:C.ink,s:12,w:600});
+    rr(x,W*.065,H*.30,W*.022,H*.36,4);x.strokeStyle=C.glass;x.stroke();
+    const fy=H*.64-H*.32*(+Fs.value/100);x.beginPath();x.moveTo(W*.068,fy);x.lineTo(W*.084,fy);x.lineTo(W*.076,fy+9);x.closePath();x.fillStyle=C.warn;x.fill();
+    label(x,'flowmeter',W*.076,H*.28,{a:'center',c:C.muted,s:11});
+    x.strokeStyle=C.muted;x.beginPath();x.moveTo(W*.05,cy);x.lineTo(W*.065,cy);x.moveTo(W*.087,cy);x.lineTo(W*.10,cy);x.stroke();
+    label(x,'to exhaust →',W*.93,cy+4,{a:'left',c:C.muted,s:11});
+    // particles
+    if(!RM){
+      acc+=dt*clamp(6+F/5,6,70);while(acc>1){acc--;carr.push({x:.10,y:Math.random()})}
+      accv+=dt*22;while(accv>1){accv--;vap.push({x:.44+.10*Math.random(),y:.75})}
+      carr.forEach(p=>p.x+=vg*dt*(0.8+.4*Math.random()));carr=carr.filter(p=>p.x<.92);
+      const D=fd()/1.5*.0035;
+      vap.forEach(p=>{p.x+=vg*dt*.9+gauss()*Math.sqrt(2*D*dt);p.y=clamp(p.y+gauss()*.05,.05,.95)});
+      vap=vap.filter(p=>p.x>.12&&p.x<.765);
+      const pyy=(p)=>{const u=p.x,a=yt+prof(u)+3,b=yb-prof(u)-3;return lerp(a,b,p.y)};
+      carr.forEach(p=>{atom(x,W*p.x,pyy(p),2.2,dark()?'rgba(200,215,225,.55)':'rgba(70,90,105,.45)')});
+      vap.forEach(p=>{atom(x,W*p.x,pyy(p),2.6,COL.Cu)});
+    }
+    // back-diffusion region note
+    if(F<15){label(x,'← Cu vapour diffusing upstream',W*.30,yt-8,{a:'right',c:C.warn,s:11})}
+    if(F>220){label(x,'gas leaving unsaturated',W*.64,yt-8,{a:'left',c:C.warn,s:11})}
+    label(x,'● carrier gas   ● Cu vapour',W*.10,H*.93,{c:C.muted,s:11});
+    // plot
+    const P=fit(pl),raw=Ps*101325*1.8,st0=[1,2,2.5,5,10].map(m=>m*10**Math.floor(Math.log10(raw/4))).find(v=>v*4>=raw),ymax=st0*4;
+    const ax=axes(P.x,P.W,P.H,{x0:5,x1:500,xlog:true,y0:0,y1:ymax,xt:[5,10,20,50,100,200,500],yt:[0,1,2,3,4].map(i=>i*st0),fy:v=>+v.toFixed(1),xl:'carrier flow, mL/min (STP)',yl:'apparent p_Cu, Pa'});
+    const q=P.x;clipBox(q,ax.b);
+    if($('#tr-rev').checked){q.setLineDash([5,4]);q.strokeStyle=C.good;q.lineWidth=1.5;q.beginPath();q.moveTo(ax.b.l,ax.Y(Ps*101325));q.lineTo(ax.b.l+ax.b.w,ax.Y(Ps*101325));q.stroke();q.setLineDash([]);
+      label(q,`true p° = ${(Ps*101325).toFixed(1)} Pa`,ax.b.l+6,ax.Y(Ps*101325)-6,{c:C.good,s:11});}
+    q.strokeStyle=C.warn;q.globalAlpha=.6;q.setLineDash([2,3]);q.beginPath();q.moveTo(ax.X(F),ax.b.t);q.lineTo(ax.X(F),ax.b.t+ax.b.h);q.stroke();q.setLineDash([]);q.globalAlpha=1;
+    pts.forEach(p=>{atom(q,ax.X(p.F),ax.Y(Math.min(p.p,ymax*.99)),5,C.accent)});
+    q.restore();
+    if(!pts.length)label(q,'Run the experiment to add points',ax.b.l+ax.b.w/2,ax.b.t+ax.b.h/2,{a:'center',c:C.muted,s:12});
+  }
+  return {frame};
+})();
+
+/* ============ 3. BOUDOUARD ============ */
+const bd=(()=>{
+  const st=$('#bd-stage'),pl=$('#bd-plot');
+  const Ts=slider('bd-T',v=>K2C(v)),In=slider('bd-in',v=>`${v}% CO₂`),Gr=$('#bd-gr');
+  const K4=T=>Math.exp(-(170700-174.5*T)/(R*T)),K3=T=>Math.exp(-(-564800+173.62*T)/(R*T));
+  const eqCO=T=>{const K=K4(T);return (-K+Math.sqrt(K*K+4*K))/2};
+  let mols=[],acc=0,soot=[];
+  function frame(dt){
+    const T=+Ts.value,fin=+In.value/100,gr=Gr.checked;
+    const xco=gr?eqCO(T):1-fin,pco2=1-xco;
+    const po2=pco2>0&&xco>0?(pco2/xco)**2/K3(T):(xco===0?Infinity:0);
+    $('#bd-co').textContent=(xco*100).toFixed(xco>.999?3:1)+' %';
+    $('#bd-pco2').textContent=sci(pco2)+' atm';$('#bd-k').textContent=sci(K4(T))+' atm';
+    $('#bd-po2').textContent=po2===0?'→ 0 (pure CO)':(isFinite(po2)?sci(po2)+' atm':'—');
+    const s=$('#bd-st'),eq=eqCO(T);
+    if(gr){s.className='status';s.textContent=(1-fin)<eq?`Inlet CO₂ attacks the graphite: C + CO₂ → 2CO until ${(eq*100).toFixed(1)}% CO.`:`Inlet is richer in CO than equilibrium: carbon is deposited (2CO → C + CO₂).`}
+    else{const Q=(1-fin)**2/Math.max(fin,1e-9);
+      if(fin===0){s.className='status warn';s.textContent='Pure CO with no CO₂: the oxygen potential is undefined in practice. Add some CO₂.'}
+      else if(Q>K4(T)){s.className='status warn';s.textContent='This inlet is above the graphite curve: soot deposition (2CO → C + CO₂) is favoured, mainly on catalytic surfaces.'}
+      else{s.className='status good';s.textContent='No graphite and below the curve: the inlet CO/CO₂ ratio fixes p_O₂.'}}
+    const {x,W,H}=fit(st),cy=H*.50,th=H*.24;
+    rr(x,W*.28,H*.20,W*.44,H*.60,8);x.fillStyle=dark()?'#1a242c':'#e6ebef';x.fill();x.strokeStyle=C.line;x.stroke();
+    const g=x.createRadialGradient(W*.5,cy,4,W*.5,cy,W*.26);g.addColorStop(0,glow(T,.6));g.addColorStop(1,glow(T,0));x.fillStyle=g;x.fillRect(W*.28,H*.20,W*.44,H*.60);
+    for(let i=0;i<10;i++){const cx=W*(.30+.40*i/9);[H*.24,H*.76].forEach(yy=>{rr(x,cx-5,yy-4,10,8,3);x.fillStyle=glow(T+120);x.fill()})}
+    label(x,`${T} K`,W*.5,H*.17,{a:'center',c:C.muted,s:11});
+    rr(x,W*.04,cy-th/2,W*.92,th,10);x.fillStyle=dark()?'rgba(140,190,215,.09)':'rgba(130,180,205,.12)';x.fill();x.strokeStyle=C.glass;x.lineWidth=2;x.stroke();
+    if(gr){for(let i=0;i<6;i++)for(let j=0;j<3;j++){const bx=W*(.41+i*.03),by=cy-th*.36+j*th*.25;rr(x,bx,by,W*.026,th*.21,3);x.fillStyle=dark()?'#2b3036':'#4a4f56';x.fill()}
+      label(x,'graphite bed',W*.5,cy+th/2+16,{a:'center',c:C.muted,s:11});}
+    soot.forEach(p=>{atom(x,W*p.x,cy+th*p.y,1.6,COL.C)});
+    if(!RM){
+      acc+=dt*28;while(acc>1){acc--;const t0=Math.random()<fin?2:1;const tf=Math.random()<xco?1:2;mols.push({x:.05,y:(Math.random()-.5)*.8,t:t0,tf,cx:.42+.16*Math.random(),a:Math.random()*6})}
+      mols.forEach(m=>{m.x+=dt*.11;m.a+=dt*2;
+        if(m.t!==m.tf&&m.x>m.cx){if(m.t===2&&m.tf===1){m.flash=1}else{if(soot.length<160)soot.push({x:m.x+(Math.random()-.5)*.02,y:.36+Math.random()*.08});m.flash=1}m.t=m.tf}
+        if(m.flash)m.flash=Math.max(0,m.flash-dt*3)});
+      mols=mols.filter(m=>m.x<.95);
+      mols.forEach(m=>{const X=W*m.x,Y=cy+th*m.y*.85,r=3.6,c=Math.cos(m.a),sn=Math.sin(m.a);
+        if(m.flash){x.beginPath();x.arc(X,Y,10*m.flash+4,0,7);x.fillStyle=glow(1700,.4*m.flash);x.fill()}
+        if(m.t===1){atom(x,X-c*r*.9,Y-sn*r*.9,r,COL.C);atom(x,X+c*r*.9,Y+sn*r*.9,r*.95,COL.O)}
+        else{atom(x,X-c*r*1.7,Y-sn*r*1.7,r*.95,COL.O);atom(x,X+c*r*1.7,Y+sn*r*1.7,r*.95,COL.O);atom(x,X,Y,r,COL.C)}});
+    }
+    if(!gr&&soot.length&&Math.random()<dt*.5)soot.shift();
+    // legend + in/out
+    atom(x,W*.06,H*.92,4,COL.C);atom(x,W*.06+7,H*.92,4,COL.O);label(x,'CO',W*.06+16,H*.92+4,{s:12});
+    atom(x,W*.14,H*.92,4,COL.O);atom(x,W*.14+7,H*.92,4,COL.C);atom(x,W*.14+14,H*.92,4,COL.O);label(x,'CO₂',W*.14+23,H*.92+4,{s:12});
+    label(x,`inlet ${(100-fin*100).toFixed(0)}% CO`,W*.06,cy-th/2-10,{c:C.muted,s:11});
+    label(x,`outlet ${(xco*100).toFixed(1)}% CO`,W*.94,cy-th/2-10,{a:'right',c:C.ink,s:12,w:600});
+    label(x,`log p_O₂ = ${po2>0&&isFinite(po2)?Math.log10(po2).toFixed(1):'—'}`,W*.94,H*.92+4,{a:'right',f:MONO,s:12});
+    // plot
+    const P=fit(pl),ax=axes(P.x,P.W,P.H,{x0:700,x1:1900,y0:0,y1:100,xt:[700,900,1100,1300,1500,1700,1900],yt:[0,25,50,75,100],xl:'T, K  (P_total = 1 atm)',yl:'% CO in CO–CO₂'});
+    const q=P.x;clipBox(q,ax.b);
+    q.beginPath();q.moveTo(ax.X(700),ax.Y(100));for(let T2=700;T2<=1900;T2+=10)q.lineTo(ax.X(T2),ax.Y(eqCO(T2)*100));q.lineTo(ax.X(1900),ax.Y(100));q.closePath();q.fillStyle=dark()?'rgba(251,146,60,.08)':'rgba(194,65,12,.06)';q.fill();
+    q.beginPath();for(let T2=700;T2<=1900;T2+=10){const y=ax.Y(eqCO(T2)*100);T2>700?q.lineTo(ax.X(T2),y):q.moveTo(ax.X(T2),y)}q.strokeStyle=C.accent;q.lineWidth=2.5;q.stroke();
+    q.strokeStyle=C.muted;q.setLineDash([2,3]);q.lineWidth=1;q.beginPath();q.moveTo(ax.X(T),ax.b.t);q.lineTo(ax.X(T),ax.b.t+ax.b.h);q.stroke();q.setLineDash([]);
+    if(gr){atom(q,ax.X(T),ax.Y(eq*100),6,C.accent)}else{q.beginPath();q.arc(ax.X(T),ax.Y((1-fin)*100),6,0,7);q.strokeStyle=C.warn;q.lineWidth=2;q.stroke()}
+    q.restore();
+    label(q,'C deposition',ax.X(760),ax.Y(90),{c:C.warn,s:11});
+    label(q,'graphite gasified',ax.X(1840),ax.Y(8),{a:'right',c:C.muted,s:11});
+  }
+  return {frame};
+})();
+
+/* ============ 4. HYDROGEN ============ */
+const hy=(()=>{
+  const st=$('#h-stage'),pl=$('#h-plot');
+  const Td=slider('h-td',v=>`${v} °C`),Tf=slider('h-T',v=>K2C(v));
+  const pw=t=>(t>=0?6.1121*Math.exp((18.678-t/234.5)*(t/(257.14+t))):6.1115*Math.exp((23.036-t/333.7)*(t/(279.82+t))))/1013.25;
+  const Gw=T=>-246450+54.8*T;
+  const M={Fe:{g:[-264400,64.7],ox:'FeO',m:'#8d949b',o:'#2f2925',lc:'#c2410c'},Ni:{g:[-235600,86.0],ox:'NiO',m:'#b9bdc1',o:'#6f8f4e',lc:'#2563eb'},Cr:{g:[-376700,85.0],ox:'Cr₂O₃',m:'#cbd0d6',o:'#3e6b3a',lc:'#15803d'}};
+  const rc=(k,T)=>Math.exp(((M[k].g[0]+M[k].g[1]*T)-Gw(T))/(R*T));
+  let ox=0,bub=[],mol=[],acc=0,accb=0;
+  document.querySelectorAll('input[name="h-m"]').forEach(r=>r.addEventListener('change',()=>ox=0));
+  function frame(dt){
+    const td=+Td.value,T=+Tf.value,k=radio('h-m'),p=Math.min(pw(td),.95),r=p/(1-p),po2=r*r*Math.exp(2*Gw(T)/(R*T)),c=rc(k,T);
+    const oxid=r>c;ox=clamp(ox+dt*(oxid?1:-1)*clamp(Math.abs(Math.log(r/c))*.15,.03,.4),0,1);
+    $('#h-pw').textContent=sci(p)+' atm';$('#h-r').textContent=sci(r);$('#h-po2').textContent=sci(po2)+' atm';$('#h-rc').textContent=sci(c);
+    const s=$('#h-st');
+    s.className='status '+(oxid?'warn':'good');
+    s.textContent=(oxid?`Oxidising: ${M[k].ox} grows on the ${k} sample (H₂O/H₂ above ${sci(c)}).`:`Reducing: the ${k} sample stays metallic.`)+(td>20?' Dew point above room temperature: heat the gas line after the bubbler or water condenses.':'');
+    const {x,W,H}=fit(st),cy=H*.52;
+    // cylinder
+    rr(x,W*.02,H*.30,W*.04,H*.40,6);x.fillStyle=C.chip;x.fill();x.strokeStyle=C.muted;x.lineWidth=1.5;x.stroke();label(x,'H₂',W*.04,H*.74+12,{a:'center',w:600});
+    // bubbler bath
+    const bx=W*.10,bw=W*.15,by=H*.36,bh=H*.42;
+    rr(x,bx,by,bw,bh,8);const bathc=td>=0?`rgba(${Math.round(lerp(60,210,td/80))},${Math.round(lerp(140,120,td/80))},${Math.round(lerp(220,90,td/80))},.25)`:'rgba(150,190,230,.30)';x.fillStyle=bathc;x.fill();x.strokeStyle=C.muted;x.stroke();
+    label(x,td>=0?`water bath ${td} °C`:`cold trap ${td} °C`,bx+bw/2,by+bh+16,{a:'center',c:C.muted,s:11});
+    rr(x,bx+bw*.25,by+bh*.12,bw*.5,bh*.78,10);x.strokeStyle=C.glass;x.lineWidth=2;x.stroke();
+    x.fillStyle=td>=0?'rgba(90,160,220,.35)':'rgba(220,235,250,.6)';x.fillRect(bx+bw*.25+2,by+bh*.40,bw*.5-4,bh*.48);
+    x.strokeStyle=C.glass;x.beginPath();x.moveTo(W*.06,cy-H*.05);x.lineTo(bx+bw*.45,cy-H*.05);x.lineTo(bx+bw*.45,by+bh*.82);x.stroke();
+    if(!RM&&td>=0){accb+=dt*(6+td*.25);while(accb>1){accb--;bub.push({x:bx+bw*(.42+.06*Math.random()),y:by+bh*.82,r:2+Math.random()*3})}
+      bub.forEach(b=>{b.y-=dt*H*.25;b.x+=(Math.random()-.5)*1.5});bub=bub.filter(b=>b.y>by+bh*.41);
+      bub.forEach(b=>{x.beginPath();x.arc(b.x,b.y,b.r,0,7);x.strokeStyle=dark()?'rgba(220,235,245,.7)':'rgba(40,90,130,.6)';x.lineWidth=1;x.stroke()})}
+    // line to furnace (heated)
+    const ly=cy-H*.10;x.strokeStyle=C.glass;x.lineWidth=2;x.beginPath();x.moveTo(bx+bw*.62,by+bh*.12);x.lineTo(bx+bw*.62,ly);x.lineTo(W*.36,ly);x.lineTo(W*.36,cy);x.lineTo(W*.38,cy);x.stroke();
+    if(td>20){x.strokeStyle=C.warn;x.lineWidth=1.2;x.beginPath();for(let u=0;u<=60;u++){const X=lerp(bx+bw*.65,W*.355,u/60),Y=ly+Math.sin(u*1.2)*4;u?x.lineTo(X,Y):x.moveTo(X,Y)}x.stroke();label(x,'heat-traced line',W*.30,ly-9,{a:'center',c:C.warn,s:11})}
+    // furnace
+    rr(x,W*.42,H*.22,W*.46,H*.60,8);x.fillStyle=dark()?'#1a242c':'#e6ebef';x.fill();x.strokeStyle=C.line;x.lineWidth=1;x.stroke();
+    const g=x.createRadialGradient(W*.65,cy,4,W*.65,cy,W*.26);g.addColorStop(0,glow(T,.6));g.addColorStop(1,glow(T,0));x.fillStyle=g;x.fillRect(W*.42,H*.22,W*.46,H*.60);
+    for(let i=0;i<10;i++){const cx=W*(.44+.42*i/9);[H*.26,H*.78].forEach(yy=>{rr(x,cx-5,yy-4,10,8,3);x.fillStyle=glow(T+120);x.fill()})}
+    label(x,`${T} K`,W*.65,H*.19,{a:'center',c:C.muted,s:11});
+    const th=H*.20;rr(x,W*.38,cy-th/2,W*.58,th,th/2);x.fillStyle=dark()?'rgba(140,190,215,.09)':'rgba(130,180,205,.12)';x.fill();x.strokeStyle=C.glass;x.lineWidth=2;x.stroke();
+    // sample
+    const sx=W*.59,sw=W*.12,sy=cy+th*.10,sh=th*.22;
+    rr(x,sx-6,sy+sh,sw+12,th*.14,3);x.fillStyle=dark()?'#5b4a3a':'#d8cbb8';x.fill();
+    rr(x,sx,sy,sw,sh,2);x.fillStyle=M[k].m;x.fill();
+    if(ox>0){const lt=sh*.9*ox;rr(x,sx-ox*2,sy-ox*2,sw+ox*4,lt+ox*2,2);x.fillStyle=M[k].o;x.globalAlpha=.4+.6*ox;x.fill();x.globalAlpha=1}
+    label(x,ox>.5?`${k} + ${M[k].ox} scale`:`${k} sample`,sx+sw/2,cy+th/2+18,{a:'center',s:12,w:600});
+    // molecules
+    if(!RM){acc+=dt*26;while(acc>1){acc--;mol.push({x:.39,y:(Math.random()-.5)*.75,w:Math.random()<p,a:Math.random()*6})}
+      mol.forEach(m=>{m.x+=dt*.10;m.a+=dt*2});mol=mol.filter(m=>m.x<.95);
+      mol.forEach(m=>{const X=W*m.x,Y=cy+th*m.y*.8,c2=Math.cos(m.a)*3,s2=Math.sin(m.a)*3;
+        if(m.w){atom(x,X,Y,3.6,COL.O);atom(x,X-c2-1,Y-s2+2,2.2,COL.Hd);atom(x,X+c2+1,Y-s2+2,2.2,COL.Hd)}
+        else{atom(x,X-c2*.7,Y-s2*.7,2.4,COL.Hd);atom(x,X+c2*.7,Y+s2*.7,2.4,COL.Hd)}})}
+    label(x,`gas: ${(100*(1-p)).toFixed(p<.01?2:1)}% H₂ · ${(100*p).toFixed(p<.01?3:1)}% H₂O`,W*.65,H*.93,{a:'center',f:MONO,s:12});
+    // plot
+    const P=fit(pl),ax=axes(P.x,P.W,P.H,{x0:873,x1:1673,y0:1e-7,y1:1e3,ylog:true,xt:[873,1073,1273,1473,1673],yt:[1e-7,1e-5,1e-3,1e-1,10,1e3],fy:v=>sci(v,1),xl:'T, K',yl:'p_H₂O / p_H₂'});
+    const q=P.x;clipBox(q,ax.b);
+    Object.keys(M).forEach(m=>{q.beginPath();for(let T2=873;T2<=1673;T2+=10){const y=ax.Y(rc(m,T2));T2>873?q.lineTo(ax.X(T2),y):q.moveTo(ax.X(T2),y)}
+      q.strokeStyle=M[m].lc;q.lineWidth=m===k?2.8:1.2;q.globalAlpha=m===k?1:.45;q.stroke();q.globalAlpha=1});
+    q.fillStyle=oxid?C.warn:C.good;q.beginPath();q.arc(ax.X(T),ax.Y(clamp(r,1e-7,1e3)),6,0,7);q.fill();
+    q.restore();
+    Object.keys(M).forEach(m=>{const yv=rc(m,1600);if(yv>1e-7&&yv<1e3)label(q,`${m}/${M[m].ox}`,ax.X(1600),ax.Y(yv)-7,{a:'right',c:M[m].lc,s:11,w:600})});
+    label(q,'oxide stable above line',ax.b.l+6,ax.b.t+13,{c:C.muted,s:11});
+  }
+  return {frame};
+})();
+
+/* ============ 5. EMULSION ============ */
+const em=(()=>{
+  const st=$('#em-stage'),pl=$('#em-plot');
+  const Rpm=slider('em-rpm',v=>`${v} rpm`),Sp=slider('em-sp',v=>`${v} min per s`);
+  let t=0,Cc=0,E=0,on=false,hist=[],drops=[],ang=0,lastS=-1;
+  const go=$('#em-go');
+  go.onclick=()=>{on=!on;go.textContent=on?'Pause':'Resume mixing'};
+  $('#em-rs').onclick=()=>{t=0;Cc=0;E=0;hist=[];drops=[];on=false;go.textContent='Start mixing';lastS=-1};
+  function frame(dt){
+    const rpm=+Rpm.value;
+    if(on&&t<60){const steps=10,h=dt*+Sp.value/steps;
+      for(let i=0;i<steps;i++){const g=1-Cc,sig=1-.85*g,shear=(rpm/100)**2;const Es=clamp((shear/sig-1)/2,0,1);
+        E+=(Es-E)*(1-Math.exp(-h/2));const A=1+25*E;Cc+=.004*(.5+.5*rpm/100)*A*(1-Cc)*h;t+=h}
+      if(Math.floor(t*4)!==lastS){lastS=Math.floor(t*4);hist.push({t,c:Cc,a:1+25*E})}
+      if(t>=60){on=false;go.textContent='Finished (60 min)'}}
+    const g=1-Cc,sig=1-.85*g,A=1+25*E;
+    $('#em-t').textContent=`${t.toFixed(1)} min`;$('#em-g').textContent=g.toFixed(3);$('#em-s').textContent=sig.toFixed(2);$('#em-a').textContent=A.toFixed(1);$('#em-c').textContent=Cc.toFixed(3);
+    const {x,W,H}=fit(st);
+    const cx=W*.5,cw=Math.min(W*.46,H*1.05),top=H*.14,bot=H*.92,iy=H*.60;
+    // furnace glow backdrop
+    const gg=x.createRadialGradient(cx,H*.55,10,cx,H*.55,W*.5);gg.addColorStop(0,glow(1823,.35));gg.addColorStop(1,glow(1823,0));x.fillStyle=gg;x.fillRect(0,0,W,H);
+    // crucible walls
+    x.fillStyle=dark()?'#2a2f35':'#4a4f56';rr(x,cx-cw/2-12,top,cw+24,bot-top+12,10);x.fill();
+    const L=cx-cw/2,Rr=cx+cw/2;
+    // metal
+    const run=on?1:0;ang+=dt*rpm/60*2*Math.PI*run*.4;
+    const amp=(rpm/200)*6*(1+1.5*E)*(on?1:.3);
+    const wave=X=>iy+Math.sin(X*.05+ang*1.3)*amp+Math.sin(X*.11-ang)*amp*.5;
+    x.beginPath();x.moveTo(L,bot);for(let X=L;X<=Rr;X+=4)x.lineTo(X,wave(X));x.lineTo(Rr,bot);x.closePath();
+    const mg=x.createLinearGradient(0,iy,0,bot);mg.addColorStop(0,'#a8b0b8');mg.addColorStop(1,'#6e767e');x.fillStyle=mg;x.fill();
+    // slag
+    x.beginPath();x.moveTo(L,top+H*.14);for(let X=L;X<=Rr;X+=4)x.lineTo(X,wave(X));x.lineTo(Rr,top+H*.14);x.closePath();
+    const sg=x.createLinearGradient(0,top,0,iy);sg.addColorStop(0,'rgba(255,170,70,.80)');sg.addColorStop(1,'rgba(205,110,40,.88)');x.fillStyle=sg;x.fill();
+    // droplets
+    const N=Math.round(E*220);
+    while(drops.length<N)drops.push({r:Math.random(),a:Math.random()*6.28,y:Math.random(),s:1.2+Math.random()*3.2,f:0});
+    let excess=drops.filter(d=>!d.f).length-N;for(const d of drops){if(excess<=0)break;if(!d.f){d.f=1;excess--}}
+    drops.forEach(d=>{d.a+=dt*(rpm/60)*(1.2-d.r*.6)*run;if(d.f)d.y+=dt*.8*(+Sp.value);});
+    drops=drops.filter(d=>d.y<1.05);
+    const sTop=top+H*.16,sBot=iy-6;
+    drops.forEach(d=>{const X=cx+Math.cos(d.a)*d.r*(cw/2-8),Y=lerp(sTop,sBot,d.y)+Math.sin(d.a)*6;x.beginPath();x.arc(X,Y,d.s,0,7);x.fillStyle='#b9c1c8';x.fill();x.strokeStyle='rgba(60,60,60,.5)';x.lineWidth=.6;x.stroke()});
+    // impeller
+    x.fillStyle=dark()?'#3b4047':'#33383e';x.fillRect(cx-5,H*.02,10,iy-H*.02-8);
+    for(let b=0;b<4;b++){const a=ang+b*Math.PI/2,w=Math.cos(a)*cw*.20,d=Math.sin(a);x.fillStyle=d>0?'#2b3036':'#4a5058';x.beginPath();x.moveTo(cx,iy-14);x.lineTo(cx+w,iy-14);x.lineTo(cx+w,iy+4);x.lineTo(cx,iy+4);x.closePath();x.fill()}
+    // labels
+    label(x,'slag (CaO–SiO₂–…)',Rr+22,top+H*.24,{c:C.ink,s:12,w:600});
+    label(x,'liquid Si',Rr+22,iy+H*.14,{c:C.ink,s:12,w:600});
+    label(x,'graphite crucible & impeller',Rr+22,H*.08,{c:C.muted,s:11});
+    label(x,`${rpm} rpm · 1823 K`,L-22,H*.08,{a:'right',c:C.muted,s:11,f:MONO});
+    label(x,E>.08?`metal droplets in slag: A/A₀ ≈ ${A.toFixed(0)}`:'flat interface',L-22,iy,{a:'right',c:E>.08?C.warn:C.muted,s:12,w:600});
+    // plot
+    const P=fit(pl),ax=axes(P.x,P.W,P.H,{x0:0,x1:60,y0:0,y1:1,xt:[0,10,20,30,40,50,60],yt:[0,.25,.5,.75,1],xl:'mixing time, min',yl:'[Ca]/[Ca]eq  ·  A/A₀ ÷ 26'});
+    const q=P.x;clipBox(q,ax.b);
+    [['c',C.accent,1],['a',C.warn,26]].forEach(([k,col,div])=>{q.beginPath();hist.forEach((h,i)=>{const X=ax.X(h.t),Y=ax.Y(h[k]/div);i?q.lineTo(X,Y):q.moveTo(X,Y)});q.strokeStyle=col;q.lineWidth=2.4;q.stroke()});
+    q.restore();
+    label(q,'[Ca] in Si',ax.b.l+ax.b.w-4,ax.b.t+14,{a:'right',c:C.accent,s:11,w:600});
+    label(q,'interfacial area',ax.b.l+ax.b.w-4,ax.b.t+30,{a:'right',c:C.warn,s:11,w:600});
+    if(!hist.length)label(q,'Press Start mixing',ax.b.l+ax.b.w/2,ax.b.t+ax.b.h/2,{a:'center',c:C.muted,s:12});
+  }
+  return {frame};
+})();
+
+/* tabs + loop */
+const sims={isopiestic:iso,transpiration:tr,boudouard:bd,hydrogen:hy,emulsion:em};
+let cur='isopiestic';
+const tabs=[...document.querySelectorAll('nav button')];
+function show(k){if(!sims[k])k='isopiestic';cur=k;tabs.forEach(b=>b.setAttribute('aria-selected',b.dataset.t===k));
+  Object.keys(sims).forEach(s=>document.getElementById(s).hidden=s!==k);
+  try{history.replaceState(null,'','#'+k)}catch(e){}}
+tabs.forEach(b=>b.onclick=()=>show(b.dataset.t));
+show((location.hash||'').slice(1));
+addEventListener('hashchange',()=>show(location.hash.slice(1)));
+document.querySelectorAll('.stage').forEach(c=>c.addEventListener('dblclick',()=>{const s=c.closest('.sim');(document.fullscreenElement?document.exitFullscreen():s.requestFullscreen?.())?.catch?.(()=>{})}));
+let last=performance.now();
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;try{sims[cur].frame(dt)}catch(e){console.error(e)}requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+})();
+</script>
+
+</body>
+</html>
